@@ -2,6 +2,7 @@ package esu
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -50,7 +51,8 @@ func (f *TaskFinder) Services() ([]string, error) {
 	}
 }
 
-// Tasks returns information about a service's running tasks.
+// Tasks returns information about a service's running tasks, sorted first by
+// public DNS name and then port.
 func (f *TaskFinder) Tasks(service string) ([]TaskInfo, error) {
 	tasksArns, err := f.fetchTasks(service)
 	if err != nil {
@@ -73,11 +75,11 @@ func (f *TaskFinder) Tasks(service string) ([]TaskInfo, error) {
 		in := instances[i]
 		port, err := f.getPortForTask(t, service)
 		if err != nil {
-			return nil, fmt.Errorf("%s, cluster=%s, service=%s, task=%s", err, f.cluster, service, t.TaskArn)
+			return nil, fmt.Errorf("%s, cluster=%s, service=%s, task=%s", err, f.cluster, service, *t.TaskArn)
 		}
 		infos[i] = TaskInfo{
-			DesiredStatus:    realString(t.DesiredStatus),
-			LastStatus:       realString(t.LastStatus),
+			DesiredStatus:    ECSTaskStatus(realString(t.DesiredStatus)),
+			LastStatus:       ECSTaskStatus(realString(t.LastStatus)),
 			StartedAt:        realTime(t.StartedAt),
 			StoppedAt:        realTime(t.StoppedAt),
 			PublicDNSName:    realString(in.PublicDnsName),
@@ -87,6 +89,7 @@ func (f *TaskFinder) Tasks(service string) ([]TaskInfo, error) {
 			Port:             port,
 		}
 	}
+	sort.Sort(taskInfoList(infos))
 	return infos, nil
 }
 
@@ -119,6 +122,9 @@ func (f *TaskFinder) getPortForTask(t *ecs.Task, service string) (int, error) {
 }
 
 func (f *TaskFinder) locateTasks(tasks []*ecs.Task) ([]*ec2.Instance, error) {
+	if len(tasks) == 0 {
+		return []*ec2.Instance{}, nil
+	}
 	ciArns := make([]*string, len(tasks))
 	for i, task := range tasks {
 		ciArns[i] = task.ContainerInstanceArn
@@ -169,18 +175,40 @@ func (f *TaskFinder) describeTasks(tasksArns []*string) ([]*ecs.Task, error) {
 		// TODO: This only shows first error.
 		return nil, fmt.Errorf("describe task failure on %s: %s", resp.Failures[0].Arn, resp.Failures[0].Reason)
 	}
-	return resp.Tasks, nil
+	// Filter out stopped tasks, we still return tasks in the process of stopping.
+	tasks := []*ecs.Task{}
+	for _, t := range resp.Tasks {
+		if t.LastStatus != nil && ECSTaskStatus(*t.LastStatus) != ECSTaskStatusStopped {
+			tasks = append(tasks, t)
+		}
+	}
+	return tasks, nil
 }
 
 func (f *TaskFinder) fetchTasks(service string) ([]*string, error) {
+	// ListTasks queries based off "DesiredState" not current state, we STOPPED as
+	// well so we can see running tasks that are in the process of stopping.
+	tasks, err := f.fetchTasksWithStatus(service, ECSTaskStatusRunning)
+	if err != nil {
+		return nil, err
+	}
+	stoppingTasks, err := f.fetchTasksWithStatus(service, ECSTaskStatusStopped)
+	if err != nil {
+		return nil, err
+	}
+	tasks = append(tasks, stoppingTasks...)
+	return tasks, nil
+}
+
+func (f *TaskFinder) fetchTasksWithStatus(service string, desiredStatus ECSTaskStatus) ([]*string, error) {
 	var nextToken *string
 	tasks := []*string{}
 	for {
 		resp, err := f.ecs.ListTasks(&ecs.ListTasksInput{
-			Cluster:     aws.String(f.cluster),
-			ServiceName: aws.String(service),
-			//DesiredStatus:     aws.String("DesiredStatus"),
-			NextToken: nextToken,
+			Cluster:       aws.String(f.cluster),
+			ServiceName:   aws.String(service),
+			DesiredStatus: aws.String(string(desiredStatus)),
+			NextToken:     nextToken,
 		})
 		if err != nil {
 			return nil, propagate(err, "ecs list tasks")
