@@ -78,6 +78,7 @@ func (f *TaskFinder) Tasks(service string) ([]TaskInfo, error) {
 			return nil, fmt.Errorf("%s, cluster=%s, service=%s, task=%s", err, f.cluster, service, *t.TaskArn)
 		}
 		infos[i] = TaskInfo{
+			TaskDefinition:   arnShortName(realString(t.TaskDefinitionArn)),
 			DesiredStatus:    ECSTaskStatus(realString(t.DesiredStatus)),
 			LastStatus:       ECSTaskStatus(realString(t.LastStatus)),
 			StartedAt:        realTime(t.StartedAt),

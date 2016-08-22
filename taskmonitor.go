@@ -1,7 +1,6 @@
 package esu
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -15,6 +14,10 @@ const DefaultPollFreq = time.Second * 10
 // when a task has been noted as being in a pending state or soon to be stopped.
 const DefaultVolatilePollFreq = time.Second * 1
 
+// numUpdatesForStable specifies how many successful updates should have been
+// seen before the monitor is considered stable, following an error.
+const numUpdatesForStable = 5
+
 // TaskMonitor is
 type TaskMonitor struct {
 	Service          string
@@ -26,6 +29,7 @@ type TaskMonitor struct {
 	taskFinder       *TaskFinder
 	allTasks         []TaskInfo
 	runningTasks     []TaskInfo
+	updatesSinceErr  int
 }
 
 // NewTaskMonitor returns a new task monitor.
@@ -74,7 +78,10 @@ func (tm *TaskMonitor) Monitor() chan<- bool {
 // IsVolatile returns true if any tasks have a desired status that doesn't match
 // last status, or an error was encountered recently.
 func (tm *TaskMonitor) IsVolatile() bool {
-	// TODO: add error state handing plus slop.
+	if tm.updatesSinceErr < numUpdatesForStable {
+		// Haven't had enough successful updates to be considered stable.
+		return false
+	}
 	for _, t := range tm.allTasks {
 		if t.DesiredStatus != t.LastStatus {
 			return true
@@ -88,9 +95,13 @@ func (tm *TaskMonitor) IsVolatile() bool {
 func (tm *TaskMonitor) Update() bool {
 	tasks, err := tm.taskFinder.Tasks(tm.Service)
 	if err != nil {
-		// TODO: Handle errors
-		fmt.Printf("Error fetching tasks %s", err)
+		tm.updatesSinceErr = 0
+		if tm.OnError != nil {
+			tm.OnError(err)
+		}
+		return false
 	}
+	tm.updatesSinceErr++
 	if !taskInfosEqual(tasks, tm.allTasks) {
 		tm.allTasks = tasks
 		if tm.OnStatusChange != nil {

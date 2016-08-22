@@ -1,3 +1,4 @@
+// Sample application that monitors the state of a service's tasks.
 package main
 
 import (
@@ -5,7 +6,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -24,7 +24,7 @@ func main() {
 	})
 	if err != nil {
 		log.Println("failed to create session:", err)
-		return
+		os.Exit(1)
 	}
 
 	tm := esu.NewTaskMonitor(sess, *cluster, *service)
@@ -41,7 +41,8 @@ func main() {
 		}
 	}
 	tm.OnError = func(err error) {
-		log.Println("error :( ", err)
+		log.Println("error detected:")
+		log.Println("  ", err)
 	}
 	cancel := tm.Monitor()
 
