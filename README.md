@@ -43,6 +43,8 @@ type TaskInfo struct {
 }
 ```
 
+Full API docs can be found here: https://godoc.org/github.com/dpup/esu
+
 ## Sample apps
 
 *[List Tasks](./cmd/listtasks/listtasks.go)* - Show all services and tasks
