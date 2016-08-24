@@ -82,7 +82,6 @@ func (f *TaskFinder) Tasks(service string) ([]TaskInfo, error) {
 			DesiredStatus:    ECSTaskStatus(realString(t.DesiredStatus)),
 			LastStatus:       ECSTaskStatus(realString(t.LastStatus)),
 			StartedAt:        realTime(t.StartedAt),
-			StoppedAt:        realTime(t.StoppedAt),
 			PublicDNSName:    realString(in.PublicDnsName),
 			PrivateDNSName:   realString(in.PrivateDnsName),
 			PublicIPAddress:  realString(in.PublicIpAddress),
@@ -117,8 +116,10 @@ func (f *TaskFinder) getPortForTask(t *ecs.Task, service string) (int, error) {
 		}
 	}
 	if c.NetworkBindings == nil || len(c.NetworkBindings) == 0 {
-		return 0, fmt.Errorf("no network bindings")
+		// Pending tasks don't yet have network bindings.
+		return 0, nil
 	}
+	// Take the first port binding.
 	return int(*c.NetworkBindings[0].HostPort), nil
 }
 

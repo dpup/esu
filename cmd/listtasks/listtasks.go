@@ -11,13 +11,14 @@ import (
 	"github.com/dpup/esu"
 )
 
+var region = flag.String("region", "us-east-1", "Which EC2 region to use")
 var cluster = flag.String("cluster", "", "Cluster name to list tasks for")
 
 func main() {
 	flag.Parse()
 
 	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String("us-east-1"),
+		Region: region,
 		CredentialsChainVerboseErrors: aws.Bool(true),
 	})
 	if err != nil {

@@ -1,3 +1,68 @@
 # ESU (ECS Service Utility)
 
-_Utilities for locating and monitoring ECS tasks without an ELB.
+_From the department of nested acronyms, comes a set of utilities for locating
+and monitoring ECS services._
+
+**Status: Experimental**
+
+This repository contains a Go library that wraps the AWS SDK and offers
+utilities for querying and monitoring ECS tasks. The original purpose was to
+facilitate service discovery in lieu of an ELB in front of each service, but
+there are many other purposes.
+
+To list or locate tasks one off, use `TaskFinder`:
+
+```go
+tf := esu.NewTaskFinder(sess, *cluster)
+tasks, err := tf.Tasks("website")
+```
+
+To monitor the status of a service, use `TaskMonitor`:
+
+```go
+tm := esu.NewTaskMonitor(sess, "sites", "website")
+tm.OnTaskChange = func(tasks []esu.TaskInfo) { ... }
+tm.OnError = func(err error) { ... }
+tm.Monitor()
+```
+
+The data return about a Task, aggregated from several API calls is represented
+by the `TaskInfo` struct:
+
+```go
+type TaskInfo struct {
+  TaskDefinition   string
+  DesiredStatus    ECSTaskStatus  // RUNNING, PENDING, STOPPED
+  LastStatus       ECSTaskStatus
+  StartedAt        time.Time
+  Port             int
+  PublicDNSName    string
+  PublicIPAddress  string
+  PrivateDNSName   string
+  PrivateIPAddress string
+}
+```
+
+## Sample apps
+
+*[List Tasks](./cmd/listtasks/listtasks.go)* - Show all services and tasks
+running on an ECS cluster
+
+    go run cmd/listtasks/listtasks.go --region=us-east-1 --cluster=sites
+
+*[Monitor Service](./cmd/monitor/monitor.go)* - Monitors status of a service,
+printing out status changes to runing tasks.
+
+    go run cmd/monitor/monitor.go --region=us-east-1 --cluster=sites --service=website
+
+(Make sure credentials are available in the environment)
+
+## Contributing
+
+Questions, comments, bug reports, and pull requests are all welcome. Submit
+them [on the project issue tracker](https://github.com/dpup/gohubbub/esu/new).
+
+## License
+
+Copyright 2016 [Daniel Pupius](http://pupius.co.uk). Licensed under the
+[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).

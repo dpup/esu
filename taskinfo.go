@@ -26,7 +26,6 @@ type TaskInfo struct {
 	DesiredStatus    ECSTaskStatus
 	LastStatus       ECSTaskStatus
 	StartedAt        time.Time
-	StoppedAt        time.Time
 	Port             int
 	PublicDNSName    string
 	PublicIPAddress  string
