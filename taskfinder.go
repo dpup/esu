@@ -69,6 +69,17 @@ func (f *TaskFinder) Tasks(service string) ([]TaskInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(tasks) != len(instances) {
+		// TODO(dan): Sometimes an instance isn't found when stopping tasks, which
+		// leads to NPE at 86. Possibly ContainerInstanceArn is nil.
+		for i, t := range tasks {
+			fmt.Println("Task", i, t)
+		}
+		for i, t := range instances {
+			fmt.Println("Instance", i, t)
+		}
+		return nil, fmt.Errorf("mismatched number of instances")
+	}
 	infos := make([]TaskInfo, len(tasks))
 	for i := range tasks {
 		t := tasks[i]
@@ -112,7 +123,7 @@ func (f *TaskFinder) getPortForTask(t *ecs.Task, service string) (int, error) {
 			}
 		}
 		if c == nil {
-			return 0, fmt.Errorf("ambiguous, multi-container task, one container should match service name.")
+			return 0, fmt.Errorf("ambiguous, multi-container task, one container should match service name")
 		}
 	}
 	if c.NetworkBindings == nil || len(c.NetworkBindings) == 0 {
