@@ -2,7 +2,6 @@ package esu
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -74,12 +73,4 @@ func runningTasks(tasks []TaskInfo) []TaskInfo {
 		}
 	}
 	return running
-}
-
-func arnShortName(arn string) string {
-	def := strings.SplitN(arn, "/", 2)
-	if len(def) == 2 {
-		return def[1]
-	}
-	return arn
 }

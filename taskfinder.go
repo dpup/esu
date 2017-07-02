@@ -73,10 +73,10 @@ func (f *TaskFinder) Tasks(service string) ([]TaskInfo, error) {
 		// TODO(dan): Sometimes an instance isn't found when stopping tasks, which
 		// leads to NPE at 86. Possibly ContainerInstanceArn is nil.
 		for i, t := range tasks {
-			fmt.Println("Task", i, t)
+			fmt.Printf("Task %d %s", i, t)
 		}
 		for i, t := range instances {
-			fmt.Println("Instance", i, t)
+			fmt.Printf("Instance %d %s", i, t)
 		}
 		return nil, fmt.Errorf("mismatched number of instances")
 	}
@@ -89,7 +89,7 @@ func (f *TaskFinder) Tasks(service string) ([]TaskInfo, error) {
 			return nil, fmt.Errorf("%s, cluster=%s, service=%s, task=%s", err, f.cluster, service, *t.TaskArn)
 		}
 		infos[i] = TaskInfo{
-			TaskDefinition:   arnShortName(realString(t.TaskDefinitionArn)),
+			TaskDefinition:   ParseARN(*t.TaskDefinitionArn).ShortName(),
 			DesiredStatus:    ECSTaskStatus(realString(t.DesiredStatus)),
 			LastStatus:       ECSTaskStatus(realString(t.LastStatus)),
 			StartedAt:        realTime(t.StartedAt),

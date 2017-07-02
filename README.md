@@ -45,17 +45,21 @@ type TaskInfo struct {
 
 Full API docs can be found here: https://godoc.org/github.com/dpup/esu
 
-## Sample apps
+## Tools
 
 *[List Tasks](./cmd/listtasks/listtasks.go)* - Show all services and tasks
 running on an ECS cluster
 
-    go run cmd/listtasks/listtasks.go --region=us-east-1 --cluster=sites
+    go run cmd/listtasks/listtasks.go --cluster=sites
 
 *[Monitor Service](./cmd/monitor/monitor.go)* - Monitors status of a service,
 printing out status changes to runing tasks.
 
-    go run cmd/monitor/monitor.go --region=us-east-1 --cluster=sites --service=website
+    go run cmd/monitor/monitor.go --cluster=sites --service=website
+
+*[Update Task](./cmd/updatetask/updatetask.go)* - Updates the container image of a service and waits for the tasks to be updated.
+
+    go run cmd/updatetask/updatetask.go --cluster=sites --service=website --tag=build-38
 
 (Make sure credentials are available in the environment)
 
