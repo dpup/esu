@@ -53,7 +53,7 @@ func main() {
 
 	svc := ecs.New(sess)
 
-	defs, err := loadTaskDefinitions(svc, tasks)
+	defs, err := loadCurrentTaskDefinitions(svc, tasks)
 	if err != nil {
 		log.Fatalln("failed to query Task Definition:", err)
 	}
@@ -77,7 +77,11 @@ func main() {
 	log.Printf("Update required")
 
 	// Use most recent task definition as a template for the service update.
-	template := getLatestTaskDef(defs)
+	template, err := getLatestTaskDef(svc, *service)
+	if err != nil {
+		log.Fatalln("Failed to fetch task definition:", err)
+		return
+	}
 	log.Printf("Using %s:%d as template", *template.Family, *template.Revision)
 
 	newTaskDef, err := updateTaskDef(svc, template, *tag)
@@ -164,7 +168,7 @@ func updateTaskDef(svc *ecs.ECS, template *ecs.TaskDefinition, tag string) (stri
 	return esu.ParseARN(*resp.TaskDefinition.TaskDefinitionArn).ShortName(), nil
 }
 
-func loadTaskDefinitions(svc *ecs.ECS, tasks []esu.TaskInfo) ([]*ecs.TaskDefinition, error) {
+func loadCurrentTaskDefinitions(svc *ecs.ECS, tasks []esu.TaskInfo) ([]*ecs.TaskDefinition, error) {
 	defs := make([]*ecs.TaskDefinition, len(tasks))
 	for i, t := range tasks {
 		resp, err := svc.DescribeTaskDefinition(&ecs.DescribeTaskDefinitionInput{
@@ -178,14 +182,25 @@ func loadTaskDefinitions(svc *ecs.ECS, tasks []esu.TaskInfo) ([]*ecs.TaskDefinit
 	return defs, nil
 }
 
-func getLatestTaskDef(defs []*ecs.TaskDefinition) *ecs.TaskDefinition {
-	var latest *ecs.TaskDefinition
-	for _, d := range defs {
-		if latest == nil || *d.Revision > *latest.Revision {
-			latest = d
-		}
+func getLatestTaskDef(svc *ecs.ECS, service string) (*ecs.TaskDefinition, error) {
+	list, err := svc.ListTaskDefinitions(&ecs.ListTaskDefinitionsInput{
+		FamilyPrefix: aws.String(service),
+		MaxResults:   aws.Int64(1),
+		Sort:         aws.String("DESC"),
+	})
+	if err != nil {
+		return nil, err
 	}
-	return latest
+	if len(list.TaskDefinitionArns) == 0 {
+		return nil, fmt.Errorf("not task definitions available")
+	}
+	desc, err := svc.DescribeTaskDefinition(&ecs.DescribeTaskDefinitionInput{
+		TaskDefinition: list.TaskDefinitionArns[0],
+	})
+	if err != nil {
+		return nil, err
+	}
+	return desc.TaskDefinition, nil
 }
 
 // checkTask returns true if all tasks belong to the given taskDef (family:revision).
