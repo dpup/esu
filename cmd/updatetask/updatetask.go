@@ -113,8 +113,7 @@ func main() {
 }
 
 func updateService(tf *esu.TaskFinder, svc *ecs.ECS,
-	taskDef, cluster, service string,
-	timeout time.Duration) error {
+	taskDef, cluster, service string, timeout time.Duration) error {
 
 	resp, err := svc.UpdateService(&ecs.UpdateServiceInput{
 		Cluster:        aws.String(cluster),
@@ -122,7 +121,8 @@ func updateService(tf *esu.TaskFinder, svc *ecs.ECS,
 		TaskDefinition: aws.String(taskDef),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update service: %s", err)
+		return fmt.Errorf("failed to update service %s/%s -> %s: %s",
+			cluster, service, taskDef, err)
 	}
 
 	log.Println("Service updated to:", *resp.Service.TaskDefinition)
@@ -171,7 +171,7 @@ func updateTaskDef(svc *ecs.ECS, template *ecs.TaskDefinition, tag string) (stri
 	if err != nil {
 		return "", err
 	}
-	return *resp.TaskDefinition.TaskDefinitionArn, nil
+	return esu.ParseARN(*resp.TaskDefinition.TaskDefinitionArn).ShortName(), nil
 }
 
 func loadCurrentTaskDefinitions(svc *ecs.ECS, tasks []esu.TaskInfo) ([]*ecs.TaskDefinition, error) {
@@ -226,7 +226,7 @@ func checkTag(defs []*ecs.TaskDefinition, tag string) bool {
 			log.Fatalln("Multi-container tasks are not currently supported!")
 		}
 		t := esu.ParseARN(*d.ContainerDefinitions[0].Image)
-		log.Printf("Task %d running %s", i, t.ShortName())
+		log.Printf("Task %d at revision %d, running %s", i, *d.Revision, t.ShortName())
 		if t.Revision != tag {
 			return false
 		}
