@@ -53,25 +53,29 @@ func main() {
 
 	svc := ecs.New(sess)
 
-	defs, err := loadCurrentTaskDefinitions(svc, tasks)
-	if err != nil {
-		log.Fatalln("failed to query Task Definition:", err)
-	}
-
-	if len(defs) > 0 && checkTag(defs, *tag) {
-		log.Println("All tasks are up to date")
-		return
-	}
-
-	if !isStable(defs) {
-		log.Println("Tasks aren't stable. Multiple revisions active:")
-		for _, task := range tasks {
-			log.Println("  ", task)
+	if len(tasks) > 0 {
+		defs, err := loadCurrentTaskDefinitions(svc, tasks)
+		if err != nil {
+			log.Fatalln("failed to query Task Definition:", err)
 		}
-		if !*force {
-			os.Exit(1)
+
+		if checkTag(defs, *tag) {
+			log.Println("All tasks are up to date")
 			return
 		}
+
+		if !isStable(defs) {
+			log.Println("Tasks aren't stable. Multiple revisions active:")
+			for _, task := range tasks {
+				log.Println("  ", task)
+			}
+			if !*force {
+				os.Exit(1)
+				return
+			}
+		}
+	} else {
+		log.Print("No tasks currently running")
 	}
 
 	log.Printf("Update required")
@@ -167,7 +171,7 @@ func updateTaskDef(svc *ecs.ECS, template *ecs.TaskDefinition, tag string) (stri
 	if err != nil {
 		return "", err
 	}
-	return esu.ParseARN(*resp.TaskDefinition.TaskDefinitionArn).ShortName(), nil
+	return *resp.TaskDefinition.TaskDefinitionArn, nil
 }
 
 func loadCurrentTaskDefinitions(svc *ecs.ECS, tasks []esu.TaskInfo) ([]*ecs.TaskDefinition, error) {
