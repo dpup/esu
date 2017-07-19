@@ -58,7 +58,7 @@ func main() {
 		log.Fatalln("failed to query Task Definition:", err)
 	}
 
-	if checkTag(defs, *tag) {
+	if len(defs) > 0 && checkTag(defs, *tag) {
 		log.Println("All tasks are up to date")
 		return
 	}
@@ -98,6 +98,8 @@ func main() {
 			if err := updateService(tf, svc, oldTaskDef, *cluster, *service, *timeout); err != nil {
 				log.Println("Error rolling back", err)
 			}
+		} else {
+			log.Println("Unexpected error:", err)
 		}
 		log.Println("Failure :(")
 		os.Exit(1)
