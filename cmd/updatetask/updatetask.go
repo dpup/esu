@@ -19,7 +19,7 @@ import (
 
 var (
 	region  = flag.String("region", "us-east-1", "Which EC2 region to use")
-	cluster = flag.String("cluster", "", "Cluster which the service belongs to")
+	world   = flag.String("world", "", "World service belongs to")
 	service = flag.String("service", "", "The service to update")
 	tag     = flag.String("tag", "", "Tag of the new image to deploy")
 
@@ -37,6 +37,11 @@ var (
 func main() {
 	flag.Parse()
 
+	cluster := fmt.Sprintf("%s-cluster", *world)
+	taskDef := fmt.Sprintf("%s-%s", *world, *service)
+
+	log.Printf("Preparing to deploy %s on %s", taskDef, cluster)
+
 	sess, err := session.NewSession(&aws.Config{
 		Region: region,
 		CredentialsChainVerboseErrors: aws.Bool(true),
@@ -45,7 +50,7 @@ func main() {
 		log.Fatalln("failed to create session:", err)
 	}
 
-	tf := esu.NewTaskFinder(sess, *cluster)
+	tf := esu.NewTaskFinder(sess, cluster)
 	tasks, err := tf.Tasks(*service)
 	if err != nil {
 		log.Fatalln("failed to query tasks:", err)
@@ -59,7 +64,7 @@ func main() {
 			log.Fatalln("failed to query Task Definition:", err)
 		}
 
-		if checkTag(defs, *tag) {
+		if checkTag(defs, *tag) && checkFamily(defs, taskDef) {
 			log.Println("All tasks are up to date")
 			return
 		}
@@ -81,7 +86,7 @@ func main() {
 	log.Printf("Update required")
 
 	// Use most recent task definition as a template for the service update.
-	template, err := getLatestTaskDef(svc, *service)
+	template, err := getLatestTaskDef(svc, taskDef)
 	if err != nil {
 		log.Fatalln("Failed to fetch task definition:", err)
 		return
@@ -95,11 +100,11 @@ func main() {
 	}
 
 	// Try to update the service.
-	if err := updateService(tf, svc, newTaskDef, *cluster, *service, *timeout); err != nil {
+	if err := updateService(tf, svc, newTaskDef, cluster, *service, *timeout); err != nil {
 		if err == errTimeout {
 			oldTaskDef := esu.ParseARN(*template.TaskDefinitionArn).ShortName()
 			log.Printf("Rolling back to %s", oldTaskDef)
-			if err := updateService(tf, svc, oldTaskDef, *cluster, *service, *timeout); err != nil {
+			if err := updateService(tf, svc, oldTaskDef, cluster, *service, *timeout); err != nil {
 				log.Println("Error rolling back", err)
 			}
 		} else {
@@ -166,7 +171,7 @@ func updateTaskDef(svc *ecs.ECS, template *ecs.TaskDefinition, tag string) (stri
 	resp, err := svc.RegisterTaskDefinition(&ecs.RegisterTaskDefinitionInput{
 		ContainerDefinitions: []*ecs.ContainerDefinition{containerDef},
 		TaskRoleArn:          template.TaskRoleArn,
-		Family:               service,
+		Family:               template.Family,
 	})
 	if err != nil {
 		return "", err
@@ -188,9 +193,9 @@ func loadCurrentTaskDefinitions(svc *ecs.ECS, tasks []esu.TaskInfo) ([]*ecs.Task
 	return defs, nil
 }
 
-func getLatestTaskDef(svc *ecs.ECS, service string) (*ecs.TaskDefinition, error) {
+func getLatestTaskDef(svc *ecs.ECS, family string) (*ecs.TaskDefinition, error) {
 	list, err := svc.ListTaskDefinitions(&ecs.ListTaskDefinitionsInput{
-		FamilyPrefix: aws.String(service),
+		FamilyPrefix: aws.String(family),
 		MaxResults:   aws.Int64(1),
 		Sort:         aws.String("DESC"),
 	})
@@ -228,6 +233,16 @@ func checkTag(defs []*ecs.TaskDefinition, tag string) bool {
 		t := esu.ParseARN(*d.ContainerDefinitions[0].Image)
 		log.Printf("Task %d at revision %d, running %s", i, *d.Revision, t.ShortName())
 		if t.Revision != tag {
+			return false
+		}
+	}
+	return true
+}
+
+// checkFamily returns true if all tasks have the right task definitoon.
+func checkFamily(defs []*ecs.TaskDefinition, taskDef string) bool {
+	for _, d := range defs {
+		if *d.Family != taskDef {
 			return false
 		}
 	}

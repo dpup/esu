@@ -8,7 +8,7 @@ import (
 
 // DefaultPollFreq specifies how often to check ECS for task changes, under
 // normal operation.
-const DefaultPollFreq = time.Second * 10
+const DefaultPollFreq = time.Second * 5
 
 // DefaultVolatilePollFreq specifies how often to check ECS for task changes,
 // when a task has been noted as being in a pending state or soon to be stopped.

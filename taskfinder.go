@@ -69,36 +69,30 @@ func (f *TaskFinder) Tasks(service string) ([]TaskInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(tasks) != len(instances) {
-		// TODO(dan): Sometimes an instance isn't found when stopping tasks, which
-		// leads to NPE at 86. Possibly ContainerInstanceArn is nil.
-		for i, t := range tasks {
-			fmt.Printf("Task %d %s", i, t)
-		}
-		for i, t := range instances {
-			fmt.Printf("Instance %d %s", i, t)
-		}
-		return nil, fmt.Errorf("mismatched number of instances")
-	}
-	infos := make([]TaskInfo, len(tasks))
-	for i := range tasks {
-		t := tasks[i]
-		in := instances[i]
+	infos := []TaskInfo{}
+	for _, t := range tasks {
 		port, err := f.getPortForTask(t, service)
 		if err != nil {
 			return nil, fmt.Errorf("%s, cluster=%s, service=%s, task=%s", err, f.cluster, service, *t.TaskArn)
 		}
-		infos[i] = TaskInfo{
-			TaskDefinition:   ParseARN(*t.TaskDefinitionArn).ShortName(),
-			DesiredStatus:    ECSTaskStatus(realString(t.DesiredStatus)),
-			LastStatus:       ECSTaskStatus(realString(t.LastStatus)),
-			StartedAt:        realTime(t.StartedAt),
-			PublicDNSName:    realString(in.PublicDnsName),
-			PrivateDNSName:   realString(in.PrivateDnsName),
-			PublicIPAddress:  realString(in.PublicIpAddress),
-			PrivateIPAddress: realString(in.PrivateIpAddress),
-			Port:             port,
+		info := TaskInfo{
+			TaskDefinition: ParseARN(*t.TaskDefinitionArn).ShortName(),
+			DesiredStatus:  ECSTaskStatus(realString(t.DesiredStatus)),
+			LastStatus:     ECSTaskStatus(realString(t.LastStatus)),
+			StartedAt:      realTime(t.StartedAt),
+			Port:           port,
 		}
+		if t.ContainerInstanceArn != nil {
+			in, ok := instances[*t.ContainerInstanceArn]
+			if ok {
+				info.EC2InstanceID = realString(in.InstanceId)
+				info.PublicDNSName = realString(in.PublicDnsName)
+				info.PrivateDNSName = realString(in.PrivateDnsName)
+				info.PublicIPAddress = realString(in.PublicIpAddress)
+				info.PrivateIPAddress = realString(in.PrivateIpAddress)
+			}
+		}
+		infos = append(infos, info)
 	}
 	sort.Sort(taskInfoList(infos))
 	return infos, nil
@@ -134,9 +128,9 @@ func (f *TaskFinder) getPortForTask(t *ecs.Task, service string) (int, error) {
 	return int(*c.NetworkBindings[0].HostPort), nil
 }
 
-func (f *TaskFinder) locateTasks(tasks []*ecs.Task) ([]*ec2.Instance, error) {
+func (f *TaskFinder) locateTasks(tasks []*ecs.Task) (map[string]*ec2.Instance, error) {
 	if len(tasks) == 0 {
-		return []*ec2.Instance{}, nil
+		return map[string]*ec2.Instance{}, nil
 	}
 	ciArns := make([]*string, len(tasks))
 	for i, task := range tasks {
@@ -157,7 +151,19 @@ func (f *TaskFinder) locateTasks(tasks []*ecs.Task) ([]*ec2.Instance, error) {
 	for i, ci := range resp.ContainerInstances {
 		ec2Ids[i] = ci.Ec2InstanceId
 	}
-	return f.locateInstances(ec2Ids)
+	instances, err := f.locateInstances(ec2Ids)
+	if err != nil {
+		return nil, err
+	}
+	rv := map[string]*ec2.Instance{}
+	for _, ci := range resp.ContainerInstances {
+		for _, i := range instances {
+			if *i.InstanceId == *ci.Ec2InstanceId {
+				rv[*ci.ContainerInstanceArn] = i
+			}
+		}
+	}
+	return rv, nil
 }
 
 func (f *TaskFinder) locateInstances(ec2Ids []*string) ([]*ec2.Instance, error) {

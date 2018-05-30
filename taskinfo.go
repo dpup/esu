@@ -26,6 +26,7 @@ type TaskInfo struct {
 	LastStatus       ECSTaskStatus
 	StartedAt        time.Time
 	Port             int
+	EC2InstanceID    string
 	PublicDNSName    string
 	PublicIPAddress  string
 	PrivateDNSName   string
@@ -34,9 +35,9 @@ type TaskInfo struct {
 
 func (ti TaskInfo) String() string {
 	if ti.DesiredStatus != ti.LastStatus {
-		return fmt.Sprintf("[%s > %s] %s @ %s:%d", ti.LastStatus, ti.DesiredStatus, ti.TaskDefinition, ti.PublicDNSName, ti.Port)
+		return fmt.Sprintf("[%s > %s] %s @ %s:%d", ti.LastStatus, ti.DesiredStatus, ti.TaskDefinition, ti.PublicIPAddress, ti.Port)
 	}
-	return fmt.Sprintf("[%s] %s @ %s:%d", ti.LastStatus, ti.TaskDefinition, ti.PublicDNSName, ti.Port)
+	return fmt.Sprintf("[%s] %s @ %s:%d", ti.LastStatus, ti.TaskDefinition, ti.PublicIPAddress, ti.Port)
 }
 
 type taskInfoList []TaskInfo
@@ -68,7 +69,9 @@ func taskInfosEqual(a, b []TaskInfo) bool {
 func runningTasks(tasks []TaskInfo) []TaskInfo {
 	running := []TaskInfo{}
 	for _, t := range tasks {
-		if t.LastStatus == ECSTaskStatusRunning && t.DesiredStatus == ECSTaskStatusRunning {
+		if t.EC2InstanceID != "" &&
+			t.LastStatus == ECSTaskStatusRunning &&
+			t.DesiredStatus == ECSTaskStatusRunning {
 			running = append(running, t)
 		}
 	}
