@@ -145,7 +145,7 @@ func (f *TaskFinder) locateTasks(tasks []*ecs.Task) (map[string]*ec2.Instance, e
 	}
 	if len(resp.Failures) != 0 {
 		// TODO: This only shows first error.
-		return nil, fmt.Errorf("describe container failure on %s: %s", resp.Failures[0].Arn, resp.Failures[0].Reason)
+		return nil, fmt.Errorf("describe container failure on %s: %s", *resp.Failures[0].Arn, *resp.Failures[0].Reason)
 	}
 	ec2Ids := make([]*string, len(resp.ContainerInstances))
 	for i, ci := range resp.ContainerInstances {
@@ -183,22 +183,30 @@ func (f *TaskFinder) locateInstances(ec2Ids []*string) ([]*ec2.Instance, error) 
 }
 
 func (f *TaskFinder) describeTasks(tasksArns []*string) ([]*ecs.Task, error) {
-	resp, err := f.ecs.DescribeTasks(&ecs.DescribeTasksInput{
-		Tasks:   tasksArns,
-		Cluster: aws.String(f.cluster),
-	})
-	if err != nil {
-		return nil, propagate(err, "ecs describe tasks")
+	if len(tasksArns) == 0 {
+		return []*ecs.Task{}, nil
 	}
-	if len(resp.Failures) != 0 {
-		// TODO: This only shows first error.
-		return nil, fmt.Errorf("describe task failure on %s: %s", resp.Failures[0].Arn, resp.Failures[0].Reason)
-	}
-	// Filter out stopped tasks, we still return tasks in the process of stopping.
-	tasks := []*ecs.Task{}
-	for _, t := range resp.Tasks {
-		if t.LastStatus != nil && ECSTaskStatus(*t.LastStatus) != ECSTaskStatusStopped {
-			tasks = append(tasks, t)
+	// DescribeTasks only allows 100 parameters, so in the case there's a flapping
+	// service and lots of stopped tasks we need to chunk calls to the SDK.
+	chunkedArns := chunk(tasksArns, 100)
+	var tasks []*ecs.Task
+	for _, chunk := range chunkedArns {
+		resp, err := f.ecs.DescribeTasks(&ecs.DescribeTasksInput{
+			Tasks:   chunk,
+			Cluster: aws.String(f.cluster),
+		})
+		if err != nil {
+			return nil, propagate(err, "ecs describe tasks")
+		}
+		if len(resp.Failures) != 0 {
+			// TODO: This only shows the first error.
+			return nil, fmt.Errorf("describe task failure on %s: %s", *resp.Failures[0].Arn, *resp.Failures[0].Reason)
+		}
+		// Filter out stopped tasks, we still return tasks in the process of stopping.
+		for _, t := range resp.Tasks {
+			if t.LastStatus != nil && ECSTaskStatus(*t.LastStatus) != ECSTaskStatusStopped {
+				tasks = append(tasks, t)
+			}
 		}
 	}
 	return tasks, nil
@@ -258,4 +266,18 @@ func realTime(t *time.Time) time.Time {
 
 func propagate(err error, msg string) error {
 	return fmt.Errorf("%s: %s", msg, err)
+}
+
+func chunk(tasks []*string, count int) [][]*string {
+	var chunked [][]*string
+	for i := 0; i < len(tasks); i += count {
+		end := -1
+		if i+count < len(tasks) {
+			end = i + count
+		} else {
+			end = len(tasks)
+		}
+		chunked = append(chunked, tasks[i:end])
+	}
+	return chunked
 }
